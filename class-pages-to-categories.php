@@ -1,14 +1,7 @@
 <?php
 /*
 Available filters:
-halftheory_admin_menu_parent
-copycontent_admin_menu_parent
-
-copycontent_post_types
-
-copycontent_allowable_tags(array $allowable_tags)
-copycontent_before_update_db(string $output, array $atts, string $hash)
-copycontent_wrap_output(string $output, array $atts, string $shortcode)
+pagestocategories_post_types
 */
 
 // Exit if accessed directly.
