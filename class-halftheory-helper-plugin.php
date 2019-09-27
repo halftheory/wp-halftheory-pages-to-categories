@@ -1,0 +1,1 @@
+/www/github/wp-halftheory-clean/app/helpers/class-halftheory-helper-plugin.php
