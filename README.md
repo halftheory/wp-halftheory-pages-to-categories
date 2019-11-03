@@ -2,7 +2,7 @@
 Wordpress plugin for automatically converting Pages (or any hierarchical post type) to Categories (or any hierarchical taxonomy).
 
 Features:
-- Automatically creates and updated taxonomies and their related terms based on Page data.
+- Automatically creates and updates taxonomies and their related terms based on Post data.
 - Ability to select specific post types available to the taxonomies.
 - Order taxonomy terms to reflect the Page Order.
 - Different options for rewriting taxonomy links.
