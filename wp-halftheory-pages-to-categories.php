@@ -12,8 +12,8 @@ Network: false
 
 /*
 Available filters:
-pagestocategories_deactivation(string $db_prefix)
-pagestocategories_uninstall(string $db_prefix)
+pagestocategories_deactivation(string $db_prefix, class $subclass)
+pagestocategories_uninstall(string $db_prefix, class $subclass)
 */
 
 // Exit if accessed directly.
@@ -24,7 +24,9 @@ final class Pages_To_Categories_Plugin {
 
 	public function __construct() {
 		@include_once(dirname(__FILE__).'/class-pages-to-categories.php');
-		$this->subclass = new Pages_To_Categories(plugin_basename(__FILE__));
+		if (class_exists('Pages_To_Categories')) {
+			$this->subclass = new Pages_To_Categories(plugin_basename(__FILE__));
+		}
 	}
 
 	public static function init() {
@@ -39,17 +41,19 @@ final class Pages_To_Categories_Plugin {
 
 	public static function deactivation() {
 		$plugin = new self;
-		apply_filters('pagestocategories_deactivation', $plugin->subclass::$prefix);
+		if ($plugin->subclass) {
+			apply_filters('pagestocategories_deactivation', $plugin->subclass::$prefix, $plugin->subclass);
+		}
 		return;
 	}
 
 	public static function uninstall() {
 		$plugin = new self;
 		if ($plugin->subclass) {
-			$plugin->subclass->delete_transient_uninstall();
 			$plugin->subclass->delete_option_uninstall();
+			$plugin->subclass->delete_postmeta_terms_uninstall();
+			apply_filters('pagestocategories_uninstall', $plugin->subclass::$prefix, $plugin->subclass);
 		}
-		apply_filters('pagestocategories_uninstall', $plugin->subclass::$prefix);
 		return;
 	}
 

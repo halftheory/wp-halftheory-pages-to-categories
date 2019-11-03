@@ -1,0 +1,5 @@
+table tr.pagestocategories-parent { background-color: #e5e5e5 !important; }
+
+table tr.pagestocategories-parent td.title a.row-title:after { content: " (taxonomy)"; font-size: 90%; }
+
+table tr.pagestocategories-child { background-color: #ececec !important; }

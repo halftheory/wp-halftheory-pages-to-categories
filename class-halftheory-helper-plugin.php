@@ -17,8 +17,11 @@ class Halftheory_Helper_Plugin {
 
 	/* setup */
 
-	public function __construct($plugin_basename = '', $prefix = '') {
+	public function __construct($plugin_basename = '', $prefix = '', $load_actions = true) {
 		$this->init($plugin_basename, $prefix);
+		if ($load_actions) {
+			$this->setup_actions();
+		}
 	}
 
 	public function init($plugin_basename = '', $prefix = '') {
@@ -28,12 +31,12 @@ class Halftheory_Helper_Plugin {
 		if (!empty($plugin_basename)) {
 			self::$plugin_basename = $plugin_basename;
 		}
+		$this->plugin_name = get_called_class();
+		$this->plugin_title = ucwords(str_replace('_', ' ', $this->plugin_name));
 		if (!empty($prefix)) {
 			self::$prefix = $prefix;
 		}
 		else {
-			$this->plugin_name = get_called_class();
-			$this->plugin_title = ucwords(str_replace('_', ' ', $this->plugin_name));
 			self::$prefix = sanitize_key($this->plugin_name);
 			self::$prefix = preg_replace("/[^a-z0-9]/", "", self::$prefix);
 		}
@@ -43,7 +46,7 @@ class Halftheory_Helper_Plugin {
 	protected function setup_actions() {
 		// admin options
 		if (!$this->is_front_end()) {
-			if (is_multisite()) {
+			if ($this->is_plugin_network()) {
 				add_action('network_admin_menu', array($this,'admin_menu'));
 				if (is_main_site()) {
 					add_action('admin_menu', array($this,'admin_menu'));
@@ -119,14 +122,14 @@ class Halftheory_Helper_Plugin {
 		<div class="wrap">
 			<h2><?php echo $title; ?></h2>
 		<?php
- 		$plugin = new Halftheory_Helper_Plugin();
+ 		$plugin = new self(self::$plugin_basename, self::$prefix, false);
  		?>
  		</div><!-- wrap --><?
  	}
 
 	/* functions */
 
-	private function is_plugin_network() {
+	public function is_plugin_network() {
 		if (isset($this->plugin_is_network)) {
 			return $this->plugin_is_network;
 		}
@@ -337,7 +340,7 @@ class Halftheory_Helper_Plugin {
 
 	/* functions-common */
 
-	private function is_true($value) {
+	public function is_true($value) {
 		if (function_exists(__FUNCTION__)) {
 			$func = __FUNCTION__;
 			return $func($value);
@@ -367,7 +370,7 @@ class Halftheory_Helper_Plugin {
 		return false;
 	}
 
-	private function make_array($str = '', $sep = ',') {
+	public function make_array($str = '', $sep = ',') {
 		if (function_exists(__FUNCTION__)) {
 			$func = __FUNCTION__;
 			return $func($str, $sep);
@@ -384,7 +387,7 @@ class Halftheory_Helper_Plugin {
 		return $arr;
 	}
 
-	private function is_front_end() {
+	public function is_front_end() {
 		if (function_exists(__FUNCTION__)) {
 			$func = __FUNCTION__;
 			return $func();
@@ -400,7 +403,7 @@ class Halftheory_Helper_Plugin {
 		return true;
 	}
 
-	private function get_current_uri() {
+	public function get_current_uri() {
 		if (function_exists(__FUNCTION__)) {
 			$func = __FUNCTION__;
 			return $func();
