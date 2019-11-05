@@ -32,8 +32,8 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		// stop if not active
 		if (!empty(self::$active)) {
 			add_action('init', array($this,'init_register_taxonomy'), 20); // must be before register_post_type!
-			add_filter('get_terms', array($this,'get_terms'), 20, 4);
 			add_filter('term_link', array($this,'term_link'), 20, 3);
+			add_filter('get_terms', array($this,'get_terms'), 20, 4);
 			if ($this->is_front_end()) {
 				//add_filter('the_posts', array($this,'the_posts'), 20, 2); // prefer loop_end for now
 				add_action('loop_end', array($this,'loop_end'), 20);
@@ -118,7 +118,15 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 					$query_var = $key;
 				}
 				elseif ($arr['links'] == 'rewrite') {
-					$rewrite = true;
+					$query_var = $key;
+					$rewrite = array(
+						'hierarchical' => true,
+						'feed' => false,
+						'ep_mask' => EP_CATEGORIES,
+					);
+				}
+				elseif ($arr['links'] == 'term_link') {
+					$query_var = $key;
 				}
 			}
 			register_taxonomy(
@@ -139,6 +147,40 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			$arr['parent'] = $post;
 			self::$registered_taxonomies[$key] = $arr;
 		}
+	}
+
+	public function term_link($termlink, $term, $taxonomy) {
+		if (empty(self::$registered_taxonomies)) {
+			return $termlink;
+		}
+		if (!headers_sent()) {
+			return $termlink;
+		}
+		if (!isset(self::$registered_taxonomies[$taxonomy])) {
+			return $termlink;
+		}
+		if (!isset(self::$registered_taxonomies[$taxonomy]['links'])) {
+			return $termlink;
+		}
+		if (self::$registered_taxonomies[$taxonomy]['links'] !== 'term_link') {
+			return $termlink;
+		}
+		$args = array(
+			'meta_query' => array(
+				array(
+					'key' => $this->postmeta_term_id,
+					'value' => $term->term_id
+				)
+			),
+			'post_type' => self::$registered_taxonomies[$taxonomy]['parent']->post_type,
+			'numberposts' => 1
+		);
+		$posts = get_posts($args);
+		if (empty($posts) || is_wp_error($posts)) {
+			return $termlink;
+		}
+		$termlink = get_the_permalink($posts[0]);
+		return $termlink;
 	}
 
 	public function get_terms($terms = array(), $taxonomy = array(), $query_vars, $term_query) {
@@ -193,40 +235,6 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			}
 		}
 		return $terms;
-	}
-
-	public function term_link($termlink, $term, $taxonomy) {
-		if (empty(self::$registered_taxonomies)) {
-			return $termlink;
-		}
-		if (!headers_sent()) {
-			return $termlink;
-		}
-		if (!isset(self::$registered_taxonomies[$taxonomy])) {
-			return $termlink;
-		}
-		if (!isset(self::$registered_taxonomies[$taxonomy]['links'])) {
-			return $termlink;
-		}
-		if (self::$registered_taxonomies[$taxonomy]['links'] !== 'term_link') {
-			return $termlink;
-		}
-		$args = array(
-			'meta_query' => array(
-				array(
-					'key' => $this->postmeta_term_id,
-					'value' => $term->term_id
-				)
-			),
-			'post_type' => self::$registered_taxonomies[$taxonomy]['parent']->post_type,
-			'numberposts' => 1
-		);
-		$posts = get_posts($args);
-		if (empty($posts) || is_wp_error($posts)) {
-			return $termlink;
-		}
-		$termlink = get_the_permalink($posts[0]);
-		return $termlink;
 	}
 
 	public function the_posts($posts, $wp_query) {
@@ -293,15 +301,8 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		<?php
  		$plugin = new self(self::$plugin_basename, self::$prefix, false);
 
-        if (isset($_POST['save']) && !empty($_POST['save'])) {
+		if ($plugin->save_menu_page()) {
         	$save = function() use ($plugin) {
-				// verify this came from the our screen and with proper authorization
-				if (!isset($_POST[$plugin->plugin_name.'::menu_page'])) {
-					return;
-				}
-				if (!wp_verify_nonce($_POST[$plugin->plugin_name.'::menu_page'], plugin_basename(__FILE__))) {
-					return;
-				}
 				// get values
 				$options_arr = $plugin->get_options_array();
 				$options = array();
@@ -355,7 +356,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 	    <form id="<?php echo $plugin::$prefix; ?>-admin-form" name="<?php echo $plugin::$prefix; ?>-admin-form" method="post" action="<?php echo $_SERVER['REQUEST_URI']; ?>">
 		<?php
 		// Use nonce for verification
-		wp_nonce_field(plugin_basename(__FILE__), $plugin->plugin_name.'::'.__FUNCTION__);
+		wp_nonce_field(self::$plugin_basename, $plugin->plugin_name.'::'.__FUNCTION__);
 		?>
 	    <div id="poststuff">
 
@@ -493,8 +494,8 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		$select_arr = array(
 			'' => __('none: ?taxonomy=parent&term=child'),
 			'query_var' => __('query_var: ?parent=child'),
-			'term_link' => __('term_link: post link overwrites term link'),
 			'rewrite' => __('rewrite: taxonomy overwrites post (resave Permalinks)'),
+			'term_link' => __('term_link: post overwrites taxonomy'),
 		);
 		foreach ($select_arr as $key => $value) {
 			echo '<option value="'.esc_attr($key).'"'.selected($arr['links'], $key, false).'>'.esc_html($value).'</option>'."\n";
@@ -514,13 +515,17 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
     	if (empty($update)) {
     		return;
     	}
-    	// update options
+    	// update options, only on Edit>Post page
 		if (!empty($_POST)) {
-	    	if (isset($_POST[$this->options_posts.'_parent_id'])) {
-				$this->hierarchical_post_type_save_post_child($post_id, $post, (int)$_POST[$this->options_posts.'_parent_id']);
-			}
-			else {
-				$this->hierarchical_post_type_save_post_parent($post_id, $post);
+			if (isset($_POST['_wpnonce'])) {
+				if (wp_verify_nonce($_POST['_wpnonce'], 'update-post_'.$post_id)) {
+					if (isset($_POST[$this->options_posts.'_parent_id'])) {
+						$this->hierarchical_post_type_save_post_child($post_id, $post, (int)$_POST[$this->options_posts.'_parent_id']);
+					}
+					else {
+						$this->hierarchical_post_type_save_post_parent($post_id, $post);
+					}
+				}
 			}
 		}
 		// update terms
@@ -861,7 +866,9 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		// new
 		if (empty($term_id)) {
 			$arr = wp_insert_term($post->post_title, $parent->post_name, $args);
-			update_post_meta($post->ID, $this->postmeta_term_id, $arr['term_id']);
+			if (!empty($arr) && !is_wp_error($arr)) {
+				update_post_meta($post->ID, $this->postmeta_term_id, $arr['term_id']);
+			}
 		}
 		// update
 		else {

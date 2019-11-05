@@ -123,11 +123,45 @@ class Halftheory_Helper_Plugin {
 			<h2><?php echo $title; ?></h2>
 		<?php
  		$plugin = new self(self::$plugin_basename, self::$prefix, false);
+
+		if ($plugin->save_menu_page()) {
+			// save
+		}
  		?>
+
+	    <form id="<?php echo $plugin::$prefix; ?>-admin-form" name="<?php echo $plugin::$prefix; ?>-admin-form" method="post" action="<?php echo $_SERVER['REQUEST_URI']; ?>">
+		<?php
+		// Use nonce for verification
+		wp_nonce_field(self::$plugin_basename, $plugin->plugin_name.'::'.__FUNCTION__);
+		?>
+	    <div id="poststuff">
+
+        <?php submit_button(__('Update'), array('primary','large'), 'save'); ?>
+
+        </div><!-- poststuff -->
+    	</form>
+
  		</div><!-- wrap --><?
  	}
 
 	/* functions */
+
+	public function save_menu_page() {
+		if (!isset($_POST['save'])) {
+			return false;
+		}
+		if (empty($_POST['save'])) {
+			return false;
+		}
+		// verify this came from the our screen and with proper authorization
+		if (!isset($_POST[$this->plugin_name.'::menu_page'])) {
+			return false;
+		}
+		if (!wp_verify_nonce($_POST[$this->plugin_name.'::menu_page'], self::$plugin_basename)) {
+			return false;
+		}
+		return true;
+	}
 
 	public function is_plugin_network() {
 		if (isset($this->plugin_is_network)) {
