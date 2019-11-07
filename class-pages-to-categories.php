@@ -14,6 +14,8 @@ if (!class_exists('Halftheory_Helper_Plugin')) {
 if (!class_exists('Pages_To_Categories') && class_exists('Halftheory_Helper_Plugin')) :
 final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 
+	public static $plugin_basename;
+	public static $prefix;
 	public static $active = false;
 	public static $registered_taxonomies = array();
 
@@ -21,9 +23,9 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 
 	public function init($plugin_basename = '', $prefix = '') {
 		parent::init($plugin_basename, $prefix);
-		self::$active = $this->get_option(self::$prefix, 'active', false);
-		$this->options_posts = self::$prefix.'_posts';
-		$this->postmeta_term_id = self::$prefix.'_term_id';
+		self::$active = $this->get_option(static::$prefix, 'active', false);
+		$this->options_posts = static::$prefix.'_posts';
+		$this->postmeta_term_id = static::$prefix.'_term_id';
 	}
 
 	protected function setup_actions() {
@@ -42,7 +44,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 
 		// admin
 		if (!$this->is_front_end()) {
-			$hierarchical_post_types = $this->get_option(self::$prefix, 'hierarchical_post_types', array());
+			$hierarchical_post_types = $this->get_option(static::$prefix, 'hierarchical_post_types', array());
 			if (!empty($hierarchical_post_types)) {
 				foreach ($hierarchical_post_types as $value) {
 					add_action('add_meta_boxes_'.$value, array($this,'hierarchical_post_type_metaboxes'));
@@ -58,11 +60,11 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 	/* actions */
 
 	public function init_register_taxonomy() {
-		$hierarchical_post_types = $this->get_option(self::$prefix, 'hierarchical_post_types', array());
+		$hierarchical_post_types = $this->get_option(static::$prefix, 'hierarchical_post_types', array());
 		if (empty($hierarchical_post_types)) {
 			return;
 		}
-		$taxonomy_object_types = $this->get_option(self::$prefix, 'taxonomy_object_types', array());
+		$taxonomy_object_types = $this->get_option(static::$prefix, 'taxonomy_object_types', array());
 		if (empty($taxonomy_object_types)) {
 			return;
 		}
@@ -242,7 +244,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			return $posts;
 		}
 		if ($parent = self::can_append_posts($wp_query->posts)) {
-			$taxonomy_object_types = $this->get_option(self::$prefix, 'taxonomy_object_types', array());
+			$taxonomy_object_types = $this->get_option(static::$prefix, 'taxonomy_object_types', array());
 			if (empty($taxonomy_object_types)) {
 				$taxonomy_object_types = 'any';
 			}
@@ -266,7 +268,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			return;
 		}
 		if ($parent = self::can_append_posts($wp_query->posts)) {
-			$taxonomy_object_types = $this->get_option(self::$prefix, 'taxonomy_object_types', array());
+			$taxonomy_object_types = $this->get_option(static::$prefix, 'taxonomy_object_types', array());
 			if (empty($taxonomy_object_types)) {
 				$taxonomy_object_types = 'any';
 			}
@@ -299,7 +301,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		<div class="wrap">
 			<h2><?php echo $title; ?></h2>
 		<?php
- 		$plugin = new self(self::$plugin_basename, self::$prefix, false);
+ 		$plugin = new static(static::$plugin_basename, static::$prefix, false);
 
 		if ($plugin->save_menu_page()) {
         	$save = function() use ($plugin) {
@@ -356,7 +358,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 	    <form id="<?php echo $plugin::$prefix; ?>-admin-form" name="<?php echo $plugin::$prefix; ?>-admin-form" method="post" action="<?php echo $_SERVER['REQUEST_URI']; ?>">
 		<?php
 		// Use nonce for verification
-		wp_nonce_field(self::$plugin_basename, $plugin->plugin_name.'::'.__FUNCTION__);
+		wp_nonce_field($plugin::$plugin_basename, $plugin->plugin_name.'::'.__FUNCTION__);
 		?>
 	    <div id="poststuff">
 
@@ -512,6 +514,9 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 	}
 
 	public function hierarchical_post_type_save_post($post_id, $post, $update) {
+		if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+			return;
+		}
     	if (empty($update)) {
     		return;
     	}
@@ -723,7 +728,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if (!is_post_type_hierarchical($typenow)) {
 			return;
 		}
-		wp_enqueue_style(self::$prefix, plugins_url('/assets/css/pages-to-categories-admin.css', __FILE__), array(), null, 'screen');
+		wp_enqueue_style(static::$prefix, plugins_url('/assets/css/pages-to-categories-admin.css', __FILE__), array(), null, 'screen');
 	}
 
 	public function post_class($classes = array(), $class, $post_id) {
@@ -738,13 +743,13 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			return $classes;
 		}
 		if ($this->post_is_taxonomy(get_post($post_id))) {
-			$classes[] = self::$prefix.'-parent';
+			$classes[] = static::$prefix.'-parent';
 		}
 		elseif ($result = $this->post_is_taxonomy_child_active(get_post($post_id))) {
 			if ($result === 'exclude') {
 				return $classes;
 			}
-			$classes[] = self::$prefix.'-child';
+			$classes[] = static::$prefix.'-child';
 		}
 		return $classes;
 	}
@@ -928,7 +933,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			return false;
 		}
 		if (empty($parent)) {
-			$plugin = new self(self::$plugin_basename, self::$prefix, false);
+			$plugin = new static(static::$plugin_basename, static::$prefix, false);
 			if ($result = $plugin->post_is_taxonomy_child_active($post)) {
 				if ($result === 'exclude') {
 					return false;
@@ -977,7 +982,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if (count($posts_array) !== 1) {
 			return false;
 		}
-		$plugin = new self(self::$plugin_basename, self::$prefix, false);
+		$plugin = new static(static::$plugin_basename, static::$prefix, false);
 		if ($result = $plugin->post_is_taxonomy_child_active($posts_array[0])) {
 			if ($result === 'exclude') {
 				return false;

@@ -2,7 +2,7 @@
 /*
 Available filters:
 halftheory_admin_menu_parent
-{self::$prefix}_admin_menu_parent
+{static::$prefix}_admin_menu_parent
 */
 
 // Exit if accessed directly.
@@ -17,7 +17,7 @@ class Halftheory_Helper_Plugin {
 
 	/* setup */
 
-	public function __construct($plugin_basename = '', $prefix = '', $load_actions = true) {
+	public function __construct($plugin_basename = '', $prefix = '', $load_actions = false) {
 		$this->init($plugin_basename, $prefix);
 		if ($load_actions) {
 			$this->setup_actions();
@@ -29,16 +29,16 @@ class Halftheory_Helper_Plugin {
 			unset($this->plugin_is_network);
 		}
 		if (!empty($plugin_basename)) {
-			self::$plugin_basename = $plugin_basename;
+			static::$plugin_basename = $plugin_basename;
 		}
 		$this->plugin_name = get_called_class();
 		$this->plugin_title = ucwords(str_replace('_', ' ', $this->plugin_name));
 		if (!empty($prefix)) {
-			self::$prefix = $prefix;
+			static::$prefix = $prefix;
 		}
 		else {
-			self::$prefix = sanitize_key($this->plugin_name);
-			self::$prefix = preg_replace("/[^a-z0-9]/", "", self::$prefix);
+			static::$prefix = sanitize_key($this->plugin_name);
+			static::$prefix = preg_replace("/[^a-z0-9]/", "", static::$prefix);
 		}
 		$this->options = array();
 	}
@@ -61,7 +61,7 @@ class Halftheory_Helper_Plugin {
 	/* admin */
 
 	public function admin_menu() {
-		if (empty(self::$prefix)) {
+		if (empty(static::$prefix)) {
 			return;
 		}
 		if (!is_array($GLOBALS['menu'])) {
@@ -69,9 +69,9 @@ class Halftheory_Helper_Plugin {
 		}
 
 		$has_parent = false;
-		$parent_slug = self::$prefix;
+		$parent_slug = static::$prefix;
 		$parent_name = apply_filters('halftheory_admin_menu_parent', 'Halftheory');
-		$parent_name = apply_filters(self::$prefix.'_admin_menu_parent', $parent_name);
+		$parent_name = apply_filters(static::$prefix.'_admin_menu_parent', $parent_name);
 
 		// set parent to nothing to skip parent menu creation
 		if (empty($parent_name)) {
@@ -79,7 +79,7 @@ class Halftheory_Helper_Plugin {
 				$this->plugin_title,
 				$this->plugin_title,
 				'manage_options',
-				self::$prefix,
+				static::$prefix,
 				array($this,'menu_page')
 			);
 			return;
@@ -111,7 +111,7 @@ class Halftheory_Helper_Plugin {
 			$this->plugin_title,
 			$this->plugin_title,
 			'manage_options',
-			self::$prefix,
+			static::$prefix,
 			array($this,'menu_page')
 		);
 	}
@@ -122,7 +122,7 @@ class Halftheory_Helper_Plugin {
 		<div class="wrap">
 			<h2><?php echo $title; ?></h2>
 		<?php
- 		$plugin = new self(self::$plugin_basename, self::$prefix, false);
+ 		$plugin = new static(static::$plugin_basename, static::$prefix, false);
 
 		if ($plugin->save_menu_page()) {
 			// save
@@ -132,7 +132,7 @@ class Halftheory_Helper_Plugin {
 	    <form id="<?php echo $plugin::$prefix; ?>-admin-form" name="<?php echo $plugin::$prefix; ?>-admin-form" method="post" action="<?php echo $_SERVER['REQUEST_URI']; ?>">
 		<?php
 		// Use nonce for verification
-		wp_nonce_field(self::$plugin_basename, $plugin->plugin_name.'::'.__FUNCTION__);
+		wp_nonce_field($plugin::$plugin_basename, $plugin->plugin_name.'::'.__FUNCTION__);
 		?>
 	    <div id="poststuff">
 
@@ -157,7 +157,7 @@ class Halftheory_Helper_Plugin {
 		if (!isset($_POST[$this->plugin_name.'::menu_page'])) {
 			return false;
 		}
-		if (!wp_verify_nonce($_POST[$this->plugin_name.'::menu_page'], self::$plugin_basename)) {
+		if (!wp_verify_nonce($_POST[$this->plugin_name.'::menu_page'], static::$plugin_basename)) {
 			return false;
 		}
 		return true;
@@ -173,7 +173,7 @@ class Halftheory_Helper_Plugin {
 				@require_once(ABSPATH.'/wp-admin/includes/plugin.php');
 			}
 			if (function_exists('is_plugin_active_for_network')) {
-				if (is_plugin_active_for_network(self::$plugin_basename)) {
+				if (is_plugin_active_for_network(static::$plugin_basename)) {
 					$res = true;
 				}
 			}
@@ -185,7 +185,7 @@ class Halftheory_Helper_Plugin {
 	// options
 	private function get_option_name($name = '', $is_network = null) {
 		if (empty($name)) {
-			$name = self::$prefix;
+			$name = static::$prefix;
 		}
 		if (is_null($is_network)) {
 			$is_network = $this->is_plugin_network();
@@ -265,7 +265,7 @@ class Halftheory_Helper_Plugin {
 	// transients
 	private function get_transient_name($name = '', $is_network = null) {
 		if (empty($name)) {
-			$name = self::$prefix;
+			$name = static::$prefix;
 		}
 		if (is_null($is_network)) {
 			$is_network = $this->is_plugin_network();
@@ -336,7 +336,7 @@ class Halftheory_Helper_Plugin {
 	// postmeta
 	private function get_postmeta_name($name = '') {
 		if (empty($name)) {
-			$name = self::$prefix;
+			$name = static::$prefix;
 		}
 		$name = substr($name, 0, 255);
 		return $name;
@@ -361,7 +361,7 @@ class Halftheory_Helper_Plugin {
 	// usermeta
 	private function get_usermeta_name($name = '') {
 		if (empty($name)) {
-			$name = self::$prefix;
+			$name = static::$prefix;
 		}
 		$name = substr($name, 0, 255);
 		return $name;

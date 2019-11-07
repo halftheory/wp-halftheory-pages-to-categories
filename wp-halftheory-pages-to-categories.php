@@ -25,7 +25,7 @@ final class Pages_To_Categories_Plugin {
 	public function __construct() {
 		@include_once(dirname(__FILE__).'/class-pages-to-categories.php');
 		if (class_exists('Pages_To_Categories')) {
-			$this->subclass = new Pages_To_Categories(plugin_basename(__FILE__));
+			$this->subclass = new Pages_To_Categories(plugin_basename(__FILE__), '', true);
 		}
 	}
 
