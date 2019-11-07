@@ -521,7 +521,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
     		return;
     	}
     	// update options, only on Edit>Post page
-		if (!empty($_POST)) {
+		if (isset($_POST)) {
 			if (isset($_POST['_wpnonce'])) {
 				if (wp_verify_nonce($_POST['_wpnonce'], 'update-post_'.$post_id)) {
 					if (isset($_POST[$this->options_posts.'_parent_id'])) {
