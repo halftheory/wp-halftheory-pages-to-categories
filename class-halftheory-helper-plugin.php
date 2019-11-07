@@ -209,7 +209,7 @@ class Halftheory_Helper_Plugin {
 			}
 			$this->options[$name] = $option;
 		}
-		if (!empty($key) && is_array($this->options[$name])) {
+		if (!$this->empty_notzero($key) && is_array($this->options[$name])) {
 			if (array_key_exists($key, $this->options[$name])) {
 				return $this->options[$name][$key];
 			}
@@ -382,10 +382,7 @@ class Halftheory_Helper_Plugin {
 		if (is_bool($value)) {
 			return $value;
 		}
-		elseif (empty($value)) {
-			return false;
-		}
-		if (is_numeric($value)) {
+		elseif (is_numeric($value)) {
 			if ((int)$value === 1) {
 				return true;
 			}
@@ -393,13 +390,32 @@ class Halftheory_Helper_Plugin {
 				return false;
 			}
 		}
-		if (is_string($value)) {
+		elseif (is_string($value)) {
 			if ($value == '1' || $value == 'true') {
 				return true;
 			}
 			elseif ($value == '0' || $value == 'false') {
 				return false;
 			}
+		}
+		elseif (empty($value)) {
+			return false;
+		}
+		return false;
+	}
+
+	public function empty_notzero($value) {
+		if (function_exists(__FUNCTION__)) {
+			$func = __FUNCTION__;
+			return $func($value);
+		}
+		if (is_numeric($value)) {
+			if ((int)$value === 0) {
+				return false;
+			}
+		}
+		if (empty($value)) {
+			return true;
 		}
 		return false;
 	}
@@ -412,7 +428,7 @@ class Halftheory_Helper_Plugin {
 		if (is_array($str)) {
 			return $str;
 		}
-		if (empty($str)) {
+		if ($this->empty_notzero($str)) {
 			return array();
 		}
 		$arr = explode($sep, $str);

@@ -311,7 +311,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 					if (!isset($_POST[$name])) {
 						continue;
 					}
-					if (empty($_POST[$name])) {
+					if ($this->empty_notzero($_POST[$name])) {
 						continue;
 					}
 					$options[$value] = $_POST[$name];
@@ -999,7 +999,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 	/* install */
 
 	public function delete_postmeta_terms_uninstall() {
-		$post_types = get_post_types(array('public' => true, 'hierarchical' => true), 'objects');
+		$post_types = get_post_types(array('public' => true, 'hierarchical' => true), 'names');
 		foreach ($post_types as $key => $value) {
 			$args = array(
 				'post_type' => $key,
