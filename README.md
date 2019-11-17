@@ -15,4 +15,4 @@ The following filters are available for plugin/theme customization:
 - pagestocategories_admin_menu_parent
 - pagestocategories_deactivation
 - pagestocategories_uninstall
-- pagestocategories_template_names
+- pagestocategories_template

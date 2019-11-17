@@ -1,7 +1,7 @@
 <?php
 /*
 Available filters:
-pagestocategories_template_names
+pagestocategories_template
 */
 
 // Exit if accessed directly.
@@ -264,6 +264,9 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 	}
 
 	public function loop_end($wp_query) {
+		if (!is_main_query()) {
+			return;
+		}
 		if (!in_the_loop()) {
 			return;
 		}
@@ -283,12 +286,14 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			}
 			// remove this filter to prevent infinite looping
 			remove_action(current_action(), array($this,__FUNCTION__), 20);
-			$template_names = array(
-				'loop.php',
-				'index.php',
-			);
-			$template_names = apply_filters('pagestocategories_template_names', $template_names, $posts, $args);
-			locate_template($template_names, true);
+			while (have_posts()) { // Start the loop.
+				the_post();
+				global $post;
+				if ($template = self::get_template()) {
+					$template = apply_filters('pagestocategories_template', $template, $post, $args);
+					load_template($template, false);
+				}
+			} // End the loop.
 			wp_reset_query();
 		}
 	}
@@ -636,7 +641,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if ($result = $this->post_is_taxonomy_child_active($post)) {
 			$args = array(
 				'post_type' => $post->post_type,
-				'post_status' => array('publish', 'pending', 'inherit'),
+				'post_status' => array('publish','inherit'),
 				'sort_column' => 'menu_order',
 				'child_of' => $post->ID,
 			);
@@ -697,7 +702,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 						// children
 						$args = array(
 							'post_type' => $post->post_type,
-							'post_status' => array('publish', 'pending', 'inherit'),
+							'post_status' => array('publish','inherit'),
 							'sort_column' => 'menu_order',
 							'child_of' => $exclude->ID,
 						);
@@ -840,7 +845,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		}
 		$args = array(
 			'post_type' => $post->post_type,
-			'post_status' => array('publish', 'pending', 'inherit'),
+			'post_status' => array('publish','inherit'),
 			'sort_column' => $sort_column,
 			'child_of' => $post->ID,
 		);
