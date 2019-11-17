@@ -466,7 +466,14 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		<label class="screen-reader-text" for="<?php echo $field['id']; ?>"><?php echo $field['title']; ?></label>
 		<input type="hidden" id="<?php echo $field['id']; ?>_parent_id" name="<?php echo $field['id']; ?>_parent_id" value="<?php echo $parent->ID; ?>" />
 
-		<p><?php _e('Parent:'); ?> <a href="<?php the_permalink($parent); ?>"><?php echo get_the_title($parent); ?></a></p>
+		<p><?php _e('Parent:');
+		edit_post_link(
+			get_the_title($parent),
+			' <span class="edit-link">',
+			'</span>',
+			$parent
+		);
+		?></p>
 
         <p><label for="<?php echo $field['id']; ?>_exclude"><input type="checkbox" id="<?php echo $field['id']; ?>_exclude" name="<?php echo $field['id']; ?>_exclude" value="<?php echo $post->ID; ?>"<?php checked(in_array($post->ID, $arr['exclude']), 1); ?> /> <?php _e('Exclude from parent taxonomy?'); ?></label></p>
 		<?
