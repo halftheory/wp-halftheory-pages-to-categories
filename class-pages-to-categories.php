@@ -1013,6 +1013,30 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		return false;
 	}
 
+	public static function get_post_from_term_id($term_id, $taxonomy = null) {
+		$plugin = new static(static::$plugin_basename, static::$prefix, false);
+		$args = array(
+			'meta_query' => array(
+				array(
+					'key' => $plugin->postmeta_term_id,
+					'value' => $term_id
+				)
+			),
+			'numberposts' => 1
+		);
+		if (!empty($taxonomy)) {
+			$args['post_type'] = $plugin::$registered_taxonomies[$taxonomy]['parent']->post_type;
+		}
+		else {
+			$args['post_type'] = 'any';
+		}
+		$posts = get_posts($args);
+		if (empty($posts) || is_wp_error($posts)) {
+			return false;
+		}
+		return $posts[0];
+	}
+
 	/* install */
 
 	public function delete_postmeta_terms_uninstall() {
