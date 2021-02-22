@@ -2,6 +2,8 @@
 /*
 Available filters:
 pagestocategories_template
+pagestocategories_get_link_terms
+pagestocategories_the_posts_pagination_args
 */
 
 // Exit if accessed directly.
@@ -26,6 +28,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		self::$active = $this->get_option(static::$prefix, 'active', false);
 		$this->options_posts = static::$prefix.'_posts';
 		$this->postmeta_term_id = static::$prefix.'_term_id';
+		$this->plugin_description = __('Created by plugin: ').$this->plugin_title;
 	}
 
 	protected function setup_actions() {
@@ -37,8 +40,12 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			add_filter('term_link', array($this,'term_link'), 20, 3);
 			add_filter('get_terms', array($this,'get_terms'), 20, 4);
 			if ($this->is_front_end()) {
+				add_filter('wp_get_object_terms_args', array($this,'wp_get_object_terms_args'), 20, 3);
+				add_filter('the_content', array($this,'the_content'), 20); // after shortcodes (priority 11)
 				//add_filter('the_posts', array($this,'the_posts'), 20, 2); // prefer loop_end for now
 				add_action('loop_end', array($this,'loop_end'), 20);
+				add_filter('term_description_rss', array($this,'term_description_rss'), 20, 2);
+				add_filter('term_description', array($this,'term_description'), 20, 4);
 			}
 		}
 
@@ -112,6 +119,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 				'add_new_item' => 'Add New '.$arr['singular_name'],
 				'new_item_name' => 'New '.$arr['singular_name'],
 				'menu_name' => $arr['plural_name'],
+				'no_terms' => 'No '.strtolower($arr['plural_name']),
 			);
 			$query_var = false;
 			$rewrite = false;
@@ -131,7 +139,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 					$query_var = $key;
 				}
 			}
-			register_taxonomy(
+			$res = register_taxonomy(
 				$key,
 				$taxonomy_object_types,
 				array(
@@ -146,8 +154,10 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 					'update_count_callback' => '_update_post_term_count'
 				)
 			);
-			$arr['parent'] = $post;
-			self::$registered_taxonomies[$key] = $arr;
+			if (!is_wp_error($res)) {
+				$arr['parent'] = $post;
+				self::$registered_taxonomies[$key] = $arr;
+			}
 		}
 	}
 
@@ -155,7 +165,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if (empty(self::$registered_taxonomies)) {
 			return $termlink;
 		}
-		if (!headers_sent()) {
+		if (!$this->is_front_end() && !headers_sent()) {
 			return $termlink;
 		}
 		if (!isset(self::$registered_taxonomies[$taxonomy])) {
@@ -167,21 +177,9 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if (self::$registered_taxonomies[$taxonomy]['links'] !== 'term_link') {
 			return $termlink;
 		}
-		$args = array(
-			'meta_query' => array(
-				array(
-					'key' => $this->postmeta_term_id,
-					'value' => $term->term_id
-				)
-			),
-			'post_type' => self::$registered_taxonomies[$taxonomy]['parent']->post_type,
-			'numberposts' => 1
-		);
-		$posts = get_posts($args);
-		if (empty($posts) || is_wp_error($posts)) {
-			return $termlink;
+		if ($post = self::get_post_from_term_id($term->term_id, $taxonomy, $this)) {
+			$termlink = get_permalink($post);
 		}
-		$termlink = get_the_permalink($posts[0]);
 		return $termlink;
 	}
 
@@ -189,7 +187,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if (empty(self::$registered_taxonomies)) {
 			return $terms;
 		}
-		if (!headers_sent()) {
+		if (!$this->is_front_end() && !headers_sent()) {
 			return $terms;
 		}
 		if (count($terms) < 2) {
@@ -214,29 +212,89 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if (self::$registered_taxonomies[$tax]['order'] == 'post_title') {
 			return $terms;
 		}
-		// get correct order of post_ids and related term_ids
-		if ($children = $this->get_taxonomy_children_posts(self::$registered_taxonomies[$tax]['parent'], self::$registered_taxonomies[$tax]['order'])) {
-			$terms_old = $terms;
-			$terms = array();
-			foreach ($children as $child) {
-				$term_id = get_post_meta($child->ID, $this->postmeta_term_id, true);
-				if (empty($term_id)) {
-					continue;
-				}
-				foreach ($terms_old as $key => $value) {
-					if ($value->term_id == (int)$term_id) {
-						$terms[] = $value;
-						unset($terms_old[$key]);
-						break;
+		elseif (self::$registered_taxonomies[$tax]['order'] == 'menu_order') {
+			// get correct order of post_ids and related term_ids
+			if ($children = $this->get_taxonomy_children_posts(self::$registered_taxonomies[$tax]['parent'], self::$registered_taxonomies[$tax]['order'])) {
+				$terms_old = $terms;
+				$terms = array();
+				foreach ($children as $child) {
+					$term_id = $this->get_postmeta($child->ID, $this->postmeta_term_id);
+					if (empty($term_id)) {
+						continue;
+					}
+					foreach ($terms_old as $key => $value) {
+						if ($value->term_id == (int)$term_id) {
+							$terms[] = $value;
+							unset($terms_old[$key]);
+							break;
+						}
 					}
 				}
-			}
-			// add any leftover terms to end of array
-			if (!empty($terms_old)) {
-				$terms = array_merge($terms, $terms_old);
+				// add any leftover terms to end of array
+				if (!empty($terms_old)) {
+					$terms = array_merge($terms, $terms_old);
+				}
 			}
 		}
 		return $terms;
+	}
+
+	public function wp_get_object_terms_args($args = array(), $object_ids = array(), $taxonomies = array()) {
+		if (empty(self::$registered_taxonomies)) {
+			return $args;
+		}
+		// some calls to get_the_taxonomies > wp_get_object_terms/get_object_term_cache > end up here.
+		global $wp_taxonomies;
+		$tax_total = 0;
+		$order_arr = array();
+		foreach ($taxonomies as $taxonomy) {
+			if (!isset($wp_taxonomies[$taxonomy])) {
+				continue;
+			}
+			if (isset($wp_taxonomies[$taxonomy]->_builtin)) {
+				if ($wp_taxonomies[$taxonomy]->_builtin) {
+					continue;
+				}
+			}
+			if (isset(self::$registered_taxonomies[$taxonomy])) {
+				if (isset(self::$registered_taxonomies[$taxonomy]['order'])) {
+					if (!empty(self::$registered_taxonomies[$taxonomy]['order'])) {
+						$order_arr[] = self::$registered_taxonomies[$taxonomy]['order'];
+					}
+				}
+			}
+			$tax_total++;
+		}
+		// only change args if 50% of taxonomies belong to plugin.
+		if ((float)count($order_arr) < ($tax_total * 0.5)) {
+			return $args;
+		}
+		$order_arr = array_count_values($order_arr);
+		$order = key($order_arr);
+		if ($order == 'post_title') {
+			$args['orderby'] = 'name';
+			$args['order'] = 'ASC';
+		}
+		elseif ($order == 'menu_order') {
+			$args['orderby'] = 'parent';
+			$args['order'] = 'ASC';
+			$args['update_term_meta_cache'] = false;
+		}
+		return $args;
+	}
+
+	public function the_content($str = '') {
+		if (!$this->the_content_conditions($str)) {
+			return $str;
+		}
+		$links = $this->get_link_terms();
+		if (!empty($links)) {
+			$args = array(
+				'limit' => 1,
+			);
+			$str = $this->link_terms($str, $links, $args);
+		}
+		return $str;
 	}
 
 	public function the_posts($posts, $wp_query) {
@@ -270,6 +328,15 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if (!in_the_loop()) {
 			return;
 		}
+		if (!is_singular()) {
+			return;
+		}
+		if (!$wp_query->in_the_loop) {
+			return;
+		}
+		if (!$wp_query->is_singular) {
+			return;
+		}
 		if ($parent = self::can_append_posts($wp_query->posts)) {
 			$taxonomy_object_types = $this->get_option(static::$prefix, 'taxonomy_object_types', array());
 			if (empty($taxonomy_object_types)) {
@@ -279,8 +346,13 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 				'post_type' => $taxonomy_object_types,
 			);
 			$args = self::get_taxonomy_posts_args($wp_query->posts[0], $args, $parent);
+			// Save original posts
+			global $posts;
+			$original_posts = $posts;
+			// Query posts
 			$posts = query_posts($args);
 			if (empty($posts)) {
+				$posts = $original_posts;
 				wp_reset_query();
 				return;
 			}
@@ -289,13 +361,48 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			while (have_posts()) { // Start the loop.
 				the_post();
 				global $post;
-				if ($template = self::get_template()) {
-					$template = apply_filters('pagestocategories_template', $template, $post, $args);
+				$template = false;
+				$template = apply_filters('pagestocategories_template', $template, $post, $args);
+				if (empty($template)) {
+					$template = self::get_template();
+				}
+				if ($template) {
 					load_template($template, false);
 				}
+				else {
+					load_template(get_stylesheet_directory().'/index.php', false);
+				}
 			} // End the loop.
+			if (isset(self::$registered_taxonomies[$parent->post_name]['posts_pagination'])) {
+				if (!empty(self::$registered_taxonomies[$parent->post_name]['posts_pagination'])) {
+					// Previous/next page navigation.
+					$args = array(
+						'prev_text'          => __('Previous'),
+						'next_text'          => __('Next'),
+						'before_page_number' => '<span class="meta-nav screen-reader-text">'.__('Page').'</span>',
+					);
+					the_posts_pagination( apply_filters('pagestocategories_the_posts_pagination_args', $args) );
+				}
+			}
+			$posts = $original_posts;
 			wp_reset_query();
 		}
+	}
+
+	public function term_description_rss($value, $taxonomy) {
+		$str = trim(strip_tags($value));
+		if (strpos($str, $this->plugin_description) === 0) {
+			return '';
+		}
+		return $value;
+	}
+
+	public function term_description($value, $term_id, $taxonomy, $context) {
+		$str = trim(strip_tags($value));
+		if (strpos($str, $this->plugin_description) === 0) {
+			return '';
+		}
+		return $value;
 	}
 
 	/* admin */
@@ -308,7 +415,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		<?php
  		$plugin = new static(static::$plugin_basename, static::$prefix, false);
 
-		if ($plugin->save_menu_page()) {
+		if ($plugin->save_menu_page(__FUNCTION__, 'save')) {
         	$save = function() use ($plugin) {
 				// get values
 				$options_arr = $plugin->get_options_array();
@@ -318,14 +425,14 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 					if (!isset($_POST[$name])) {
 						continue;
 					}
-					if ($this->empty_notzero($_POST[$name])) {
+					if ($plugin->empty_notzero($_POST[$name])) {
 						continue;
 					}
 					$options[$value] = $_POST[$name];
 				}
 				// save it
-	            $updated = '<div class="updated"><p><strong>Options saved.</strong></p></div>';
-	            $error = '<div class="error"><p><strong>Error: There was a problem.</strong></p></div>';
+	            $updated = '<div class="updated"><p><strong>'.esc_html__('Options saved.').'</strong></p></div>';
+	            $error = '<div class="error"><p><strong>'.esc_html__('Error: There was a problem.').'</strong></p></div>';
 				if (!empty($options)) {
 		            if ($plugin->update_option($plugin::$prefix, $options)) {
 		            	echo $updated;
@@ -353,7 +460,34 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 				}
 			};
 			$save();
-        } // save
+        }
+    	elseif ($plugin->save_menu_page(__FUNCTION__, 'save_posts_clean')) {
+    		$save = function() use ($plugin) {
+				// get values
+				$name = $plugin::$prefix.'_save_posts_clean';
+				if (!isset($_POST[$name])) {
+					return;
+				}
+				if (empty($_POST[$name])) {
+					return;
+				}
+				$remove = array_map('absint', $plugin->make_array($_POST[$name]));
+				$options_posts = $plugin->get_option($plugin->options_posts, null, array());
+				foreach ($remove as $post_id) {
+					if (isset($options_posts[$post_id])) {
+						unset($options_posts[$post_id]);
+					}
+				}
+				if (empty($options_posts)) {
+					$plugin->delete_option($plugin->options_posts);
+				}
+				else {
+					$plugin->update_option($plugin->options_posts, $options_posts);
+				}
+	            echo '<div class="updated"><p><strong>'.esc_html__('Data was cleaned.').'</strong></p></div>';
+    		};
+			$save();    		
+    	}
 
 		// show the form
 		$options_arr = $plugin->get_options_array();
@@ -415,10 +549,47 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 
         <?php submit_button(__('Update'), array('primary','large'), 'save'); ?>
 
+        <?php
+        // clean posts data?
+        $dirty = array();
+		$options_posts = $plugin->get_option($plugin->options_posts, null, array());
+		foreach ($options_posts as $post_id => $arr) {
+			$p = get_post($post_id);
+			if (empty($p)) {
+				$dirty[$post_id] = 'ID '.$post_id;
+				continue;
+			}
+			if (!isset($arr['active'])) {
+				$dirty[$post_id] = '<a href="'.esc_url(get_permalink($p)).'">'.get_the_title($p).'</a>';
+				continue;
+			}
+			if (empty($arr['active'])) {
+				$dirty[$post_id] = '<a href="'.esc_url(get_permalink($p)).'">'.get_the_title($p).'</a>';
+				continue;
+			}
+		}
+		if (!empty($dirty)) : ?>
+		<div class="postbox">
+			<div class="inside">
+		        <h4><?php _e('Remove Inactive Post Data'); ?></h4>
+		        <p><span class="description"><?php _e('The following posts have data, however they are inactive.'); ?></span></p>
+		        <ul>
+		        <?php
+		        ksort($dirty);
+		        foreach ($dirty as $post_id => $value) {
+		        	echo '<li><input type="checkbox" name="'.$plugin::$prefix.'_save_posts_clean[]" value="'.$post_id.'" /> '.$value.'</li>'."\n";
+		        }
+		        ?>
+		        </ul>
+			</div>
+		</div>
+        <?php submit_button(__('Clean'), array('primary','large'), 'save_posts_clean'); ?>
+        <?php endif; ?>
+
         </div><!-- poststuff -->
     	</form>
 
- 		</div><!-- wrap --><?
+ 		</div><!-- wrap --><?php
  	}
 
 	public function hierarchical_post_type_metaboxes($post) {
@@ -460,7 +631,11 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if (!isset($field['args']['parent'])) {
 			return;
 		}
-		$parent = $field['args']['parent'];
+		$parent = get_post($field['args']['parent']);
+		if (empty($parent)) {
+			return;
+		}
+
 		$arr = array_merge( $this->get_options_post_array(), $this->get_option($this->options_posts, $parent->ID, array()) );
 		?>
 		<label class="screen-reader-text" for="<?php echo $field['id']; ?>"><?php echo $field['title']; ?></label>
@@ -475,8 +650,22 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		);
 		?></p>
 
-        <p><label for="<?php echo $field['id']; ?>_exclude"><input type="checkbox" id="<?php echo $field['id']; ?>_exclude" name="<?php echo $field['id']; ?>_exclude" value="<?php echo $post->ID; ?>"<?php checked(in_array($post->ID, $arr['exclude']), 1); ?> /> <?php _e('Exclude from parent taxonomy?'); ?></label></p>
-		<?
+        <p><label for="<?php echo $field['id']; ?>_exclude"><input type="checkbox" id="<?php echo $field['id']; ?>_exclude" name="<?php echo $field['id']; ?>_exclude" value="<?php echo $post->ID; ?>"<?php checked(in_array($post->ID, $arr['exclude']), 1); ?> /> <?php _e('Exclude from parent taxonomy.'); ?></label></p>
+		<?php
+		if (isset($arr['append_posts'])) {
+			if (!empty($arr['append_posts'])) {
+		?>
+        <p><label for="<?php echo $field['id']; ?>_exclude_append_posts"><input type="checkbox" id="<?php echo $field['id']; ?>_exclude_append_posts" name="<?php echo $field['id']; ?>_exclude_append_posts" value="<?php echo $post->ID; ?>"<?php checked(in_array($post->ID, $arr['exclude_append_posts']), 1); ?> /> <?php _e('Don\'t append taxonomy posts to page.'); ?></label></p>
+		<?php
+			}
+		}
+		if (isset($arr['link_terms'])) {
+			if (!empty($arr['link_terms'])) {
+		?>
+        <p><label for="<?php echo $field['id']; ?>_exclude_link_terms"><input type="checkbox" id="<?php echo $field['id']; ?>_exclude_link_terms" name="<?php echo $field['id']; ?>_exclude_link_terms" value="<?php echo $post->ID; ?>"<?php checked(in_array($post->ID, $arr['exclude_link_terms']), 1); ?> /> <?php _e('Don\'t add links to this term in post content.'); ?></label></p>
+		<?php
+			}
+		}
 	}
 
 	public function hierarchical_post_type_metaboxes_parent($post, $field = array()) {
@@ -519,13 +708,17 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 
         <p><label for="<?php echo $field['id']; ?>_append_posts"><input type="checkbox" id="<?php echo $field['id']; ?>_append_posts" name="<?php echo $field['id']; ?>_append_posts" value="1"<?php checked($arr['append_posts'], 1); ?> /> <?php _e('Append taxonomy posts to page?'); ?></label></p>
 
+        <p><label for="<?php echo $field['id']; ?>_posts_pagination"><input type="checkbox" id="<?php echo $field['id']; ?>_posts_pagination" name="<?php echo $field['id']; ?>_posts_pagination" value="1"<?php checked($arr['posts_pagination'], 1); ?> /> <?php _e('Posts use pagination?'); ?></label></p>
+
+        <p><label for="<?php echo $field['id']; ?>_link_terms"><input type="checkbox" id="<?php echo $field['id']; ?>_link_terms" name="<?php echo $field['id']; ?>_link_terms" value="1"<?php checked($arr['link_terms'], 1); ?> /> <?php _e('Add links to terms in post content?'); ?></label></p>
+
 		<p><label for="<?php echo $field['id']; ?>_singular_name"><span style="min-width: 10em; display: inline-block;"><?php _e('Singular name'); ?></span> <input type="text" name="<?php echo $field['id']; ?>_singular_name" id="<?php echo $field['id']; ?>_singular_name" style="min-width: 10em; width: auto;" value="<?php echo esc_attr($arr['singular_name']); ?>" /></label></p>
 
 		<p><label for="<?php echo $field['id']; ?>_plural_name"><span style="min-width: 10em; display: inline-block;"><?php _e('Plural name'); ?></span> <input type="text" name="<?php echo $field['id']; ?>_plural_name" id="<?php echo $field['id']; ?>_plural_name" style="min-width: 10em; width: auto;" value="<?php echo esc_attr($arr['plural_name']); ?>" /></label></p>
-		<?
+		<?php
 	}
 
-	public function hierarchical_post_type_save_post($post_id, $post, $update) {
+	public function hierarchical_post_type_save_post($post_id, $post, $update = false) {
 		if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
 			return;
 		}
@@ -558,52 +751,66 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
     	if (empty($parent_id)) {
     		return;
     	}
+		$child_keys = array(
+			'exclude',
+			'exclude_append_posts',
+			'exclude_link_terms',
+		);
+		$values = array();
+		foreach ($child_keys as $key) {
+			$values[$key] = isset($_POST[$this->options_posts.'_'.$key]) ? absint($_POST[$this->options_posts.'_'.$key]) : false;
+		}
 		$options_posts = $this->get_option($this->options_posts, null, array());
-		if (!isset($options_posts[$parent_id]) && !isset($_POST[$this->options_posts.'_exclude'])) {
+		if (!isset($options_posts[$parent_id]) && empty(array_filter($values))) {
 			return;
 		}
-		elseif (!isset($options_posts[$parent_id]) && isset($_POST[$this->options_posts.'_exclude'])) {
+		elseif (!isset($options_posts[$parent_id])) {
 			$options_posts[$parent_id] = $this->get_options_post_array();
-			$options_posts[$parent_id]['exclude'] = array((int)$_POST[$this->options_posts.'_exclude']);
 		}
-		elseif (isset($options_posts[$parent_id]) && !isset($_POST[$this->options_posts.'_exclude'])) {
-			if (!isset($options_posts[$parent_id]['exclude'])) {
-				return;
+
+		foreach ($values as $key => $value) {
+			// set the array
+			if (!isset($options_posts[$parent_id][$key])) {
+				$options_posts[$parent_id][$key] = array();
 			}
-			elseif (empty($options_posts[$parent_id]['exclude'])) {
-				return;
+			else {
+				$options_posts[$parent_id][$key] = $this->make_array($options_posts[$parent_id][$key]);
+				$options_posts[$parent_id][$key] = array_map('absint', $options_posts[$parent_id][$key]);
 			}
-			elseif (!in_array($post_id, $options_posts[$parent_id]['exclude'])) {
-				return;
+			// handle the value
+			if (empty($options_posts[$parent_id][$key]) && $value === false) {
+				continue;
 			}
-			elseif (in_array($post_id, $options_posts[$parent_id]['exclude'])) {
-				$options_posts[$parent_id]['exclude'] = array_diff($options_posts[$parent_id]['exclude'], array($post_id));
+			elseif (empty($options_posts[$parent_id][$key]) && $value) {
+				$options_posts[$parent_id][$key] = array($value);
 			}
-		}
-		elseif (isset($options_posts[$parent_id]) && isset($_POST[$this->options_posts.'_exclude'])) {
-			if (!isset($options_posts[$parent_id]['exclude'])) {
-				$options_posts[$parent_id]['exclude'] = array((int)$_POST[$this->options_posts.'_exclude']);
+			elseif (!empty($options_posts[$parent_id][$key]) && $value === false) {
+				if (in_array($post_id, $options_posts[$parent_id][$key])) {
+					$options_posts[$parent_id][$key] = array_diff($options_posts[$parent_id][$key], array($post_id));
+				}
 			}
-			elseif (empty($options_posts[$parent_id]['exclude'])) {
-				$options_posts[$parent_id]['exclude'] = array((int)$_POST[$this->options_posts.'_exclude']);
+			elseif (!empty($options_posts[$parent_id][$key]) && $value) {
+				if (!in_array($value, $options_posts[$parent_id][$key])) {
+					$options_posts[$parent_id][$key][] = $value;
+				}
 			}
-			elseif (!in_array($post_id, $options_posts[$parent_id]['exclude'])) {
-				$options_posts[$parent_id]['exclude'][] = (int)$_POST[$this->options_posts.'_exclude'];
-			}
-			elseif (in_array($post_id, $options_posts[$parent_id]['exclude'])) {
-				return;
-			}
+			sort($options_posts[$parent_id][$key]);
 		}
 		// remove old parent - can't be child and parent
 		if (isset($options_posts[$post_id])) {
 			unset($options_posts[$post_id]);
 		}
-		$this->update_option($this->options_posts, $options_posts);
+		if (empty($options_posts)) {
+			$this->delete_option($this->options_posts);
+		}
+		else {
+			$this->update_option($this->options_posts, $options_posts);
+		}
 	}
 
 	private function hierarchical_post_type_save_post_parent($post_id, $post) {
-		$arr = $values = $this->get_options_post_array();
-		foreach ($arr as $key => $value) {
+		$defaults = $values = $this->get_options_post_array();
+		foreach ($defaults as $key => $value) {
 			if (isset($_POST[$this->options_posts.'_'.$key])) {
 				$values[$key] = $_POST[$this->options_posts.'_'.$key];
 			}
@@ -611,25 +818,45 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 				$values[$key] = false;
 			}
 		}
-		ksort($arr);
+		ksort($defaults);
 		ksort($values);
 		$options_posts = $this->get_option($this->options_posts, null, array());
+		// new
 		if (!isset($options_posts[$post_id])) {
-			if ($arr === $values) {
+			if (empty($values['active'])) { // no need to add
+				return;
+			}
+			if ($defaults === $values) { // no changes
 				return;
 			}
 			$options_posts[$post_id] = $values;
 		}
+		// update
 		elseif (isset($options_posts[$post_id])) {
-			if (isset($options_posts[$post_id]['exclude'])) {
-				$values['exclude'] = $options_posts[$post_id]['exclude'];
-				ksort($values);
+			// 'exclude' - check and retain values
+			$child_keys = array(
+				'exclude',
+				'exclude_append_posts',
+				'exclude_link_terms',
+			);
+			foreach ($child_keys as $key) {
+				if (isset($options_posts[$post_id][$key])) {
+					$values[$key] = array();
+					foreach ($this->make_array($options_posts[$post_id][$key]) as $value) {
+						$p = get_post($value);
+						if (!empty($p)) {
+							$values[$key][] = absint($value);
+						}
+					}
+					sort($values[$key]);
+				}
 			}
+			ksort($values);
 			ksort($options_posts[$post_id]);
-			if ($options_posts[$post_id] === $values) {
+			if ($options_posts[$post_id] === $values) { // no changes
 				return;
 			}
-			if ($arr === $values) {
+			if ($defaults === $values) {
 				unset($options_posts[$post_id]);
 			}
 			else {
@@ -679,7 +906,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if ($children = $this->get_taxonomy_children_posts($post)) {
 			// check taxonomy slug
 			foreach ($children as $child) {
-				$term_id = get_post_meta($child->ID, $this->postmeta_term_id, true);
+				$term_id = $this->get_postmeta($child->ID, $this->postmeta_term_id);
 				if (!empty($term_id)) {
 					$term = get_term((int)$term_id);
 					if (!empty($term) && !is_wp_error($term)) {
@@ -726,11 +953,26 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 	}
 
 	public function after_delete_post($post_id) {
+		// child
 		$this->delete_term($post_id);
+		// parent
+		$options_posts = $this->get_option($this->options_posts, null, array());
+		if (isset($options_posts[$post_id])) {
+			unset($options_posts[$post_id]);
+		}
+		if (empty($options_posts)) {
+			$this->delete_option($this->options_posts);
+		}
+		else {
+			$this->update_option($this->options_posts, $options_posts);
+		}
 	}
 
 	public function admin_enqueue_scripts() {
 		if (!function_exists('get_current_screen')) {
+			return;
+		}
+		if (!is_object(get_current_screen())) {
 			return;
 		}
 		if (strpos(get_current_screen()->id, 'edit-') === false) {
@@ -740,7 +982,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if (!is_post_type_hierarchical($typenow)) {
 			return;
 		}
-		wp_enqueue_style(static::$prefix, plugins_url('/assets/css/pages-to-categories-admin.css', __FILE__), array(), null, 'screen');
+		wp_enqueue_style(static::$prefix, plugins_url('/assets/css/pages-to-categories-admin.css', __FILE__), array(), self::get_plugin_version(), 'screen');
 	}
 
 	public function post_class($classes = array(), $class, $post_id) {
@@ -783,9 +1025,13 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			'order' => 'menu_order',
 			'links' => '',
 			'append_posts' => true,
+			'posts_pagination' => true,
+			'link_terms' => true,
 			'singular_name' => '',
 			'plural_name' => '',
 			'exclude' => array(),
+			'exclude_append_posts' => array(),
+			'exclude_link_terms' => array(),
 		);
     }
 
@@ -872,19 +1118,19 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		}
 		$term_parent = 0;
 		if ($post->post_parent !== $parent->ID) {
-			$term_parent = get_post_meta($post->post_parent, $this->postmeta_term_id, true);
+			$term_parent = $this->get_postmeta($post->post_parent, $this->postmeta_term_id);
 		}
 		$args = array(
-			'description' => __('Created by plugin: ').$this->plugin_title,
+			'description' => $this->plugin_description,
 			'parent' => (int)$term_parent,
 			'slug' => $post->post_name,
 		);
-		$term_id = get_post_meta($post->ID, $this->postmeta_term_id, true);
+		$term_id = $this->get_postmeta($post->ID, $this->postmeta_term_id);
 		// new
 		if (empty($term_id)) {
 			$arr = wp_insert_term($post->post_title, $parent->post_name, $args);
 			if (!empty($arr) && !is_wp_error($arr)) {
-				update_post_meta($post->ID, $this->postmeta_term_id, $arr['term_id']);
+				$this->update_postmeta($post->ID, $this->postmeta_term_id, $arr['term_id']);
 			}
 		}
 		// update
@@ -906,7 +1152,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 		if (empty($post_id)) {
 			return;
 		}
-		$term_id = get_post_meta($post_id, $this->postmeta_term_id, true);
+		$term_id = $this->get_postmeta($post_id, $this->postmeta_term_id);
 		if (!empty($term_id)) {
 			$taxonomy = null;
 			if (empty($parent)) {
@@ -922,7 +1168,7 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 				$taxonomy = $parent->post_name;
 			}
 			wp_delete_term((int)$term_id, $taxonomy);
-			delete_post_meta($post_id, $this->postmeta_term_id);
+			$this->delete_postmeta($post_id, $this->postmeta_term_id);
 		}
 	}
 
@@ -981,8 +1227,27 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			),
 			'exclude' => array($post->ID),
 			'post_type' => 'any',
-			'numberposts' => -1
 		);
+		// posts_pagination
+		$pagination = false;
+		if (isset(self::$registered_taxonomies[$parent->post_name]['posts_pagination'])) {
+			if (!empty(self::$registered_taxonomies[$parent->post_name]['posts_pagination'])) {
+				$pagination = true;
+				if (is_paged()) {
+					global $paged;
+					$defaults['paged'] = $paged;
+				}
+			}
+		}
+		if (!$pagination) {
+			$arr = array(
+				'numberposts' => -1, // get_posts
+				'posts_per_page' => -1, // query_posts
+				'nopaging' => true,
+				'ignore_sticky_posts' => true,
+			);
+			$defaults = array_merge($defaults, $arr);
+		}
 		$args = wp_parse_args($args, $defaults);
 		return $args;
 	}
@@ -1008,13 +1273,19 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 			if (empty(self::$registered_taxonomies[$result->post_name]['append_posts'])) {
 				return false;
 			}
+			$exclude_append_posts = isset(self::$registered_taxonomies[$result->post_name]['exclude_append_posts']) ? array_map('absint', $plugin->make_array(self::$registered_taxonomies[$result->post_name]['exclude_append_posts'])) : array();
+			if (in_array($posts_array[0]->ID, $exclude_append_posts)) {
+				return false;
+			}
 			return $result;
 		}
 		return false;
 	}
 
-	public static function get_post_from_term_id($term_id, $taxonomy = null) {
-		$plugin = new static(static::$plugin_basename, static::$prefix, false);
+	public static function get_post_from_term_id($term_id = 0, $taxonomy = null, $plugin = null) {
+		if (!is_a($plugin, get_called_class())) {
+			$plugin = new static(static::$plugin_basename, static::$prefix, false);
+		}
 		$args = array(
 			'meta_query' => array(
 				array(
@@ -1022,19 +1293,69 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 					'value' => $term_id
 				)
 			),
-			'numberposts' => 1
+			'numberposts' => 1,
+			'post_type' => 'any',
 		);
 		if (!empty($taxonomy)) {
-			$args['post_type'] = $plugin::$registered_taxonomies[$taxonomy]['parent']->post_type;
-		}
-		else {
-			$args['post_type'] = 'any';
+			if (isset($plugin::$registered_taxonomies[$taxonomy])) {
+				$args['post_type'] = $plugin::$registered_taxonomies[$taxonomy]['parent']->post_type;
+			}
 		}
 		$posts = get_posts($args);
 		if (empty($posts) || is_wp_error($posts)) {
 			return false;
 		}
 		return $posts[0];
+	}
+
+	public static function get_term_id_from_post_id($post_id = 0, $plugin = null) {
+		if (!is_a($plugin, get_called_class())) {
+			$plugin = new static(static::$plugin_basename, static::$prefix, false);
+		}
+		$term_id = $plugin->get_postmeta($post_id, $plugin->postmeta_term_id);
+		if (empty($term_id)) {
+			return false;
+		}
+		return (int)$term_id;
+	}
+
+	public function get_link_terms($post_id = 0) {
+		$links = array();
+		$options_posts = $this->get_option($this->options_posts, null, array());
+		if (empty($options_posts)) {
+			return $links;
+		}
+		if (empty($post_id) && (is_singular() || in_the_loop())) {
+			$post_id = get_the_ID();
+		}
+		foreach ($options_posts as $parent_id => $arr) {
+			if (!isset($arr['link_terms'])) {
+				continue;
+			}
+			if (empty($arr['link_terms'])) {
+				continue;
+			}
+			$parent = get_post($parent_id);
+			if (empty($parent)) {
+				continue;
+			}
+			if ($children = $this->get_taxonomy_children_posts($parent)) {
+				$exclude_link_terms = isset($arr['exclude_link_terms']) ? array_map('absint', $this->make_array($arr['exclude_link_terms'])) : array();
+				foreach ($children as $child) {
+					if (in_array($child->ID, $exclude_link_terms)) {
+						continue;
+					}
+					if ($child->ID == $post_id) {
+						continue;
+					}
+					$term_id = $this->get_postmeta($child->ID, $this->postmeta_term_id);
+					if (!empty($term_id) && !isset($links[$child->post_title])) {
+						$links[$child->post_title] = set_url_scheme(get_term_link((int)$term_id));
+					}
+				}
+			}
+		}
+		return apply_filters('pagestocategories_get_link_terms', $links, $post_id);
 	}
 
 	/* install */

@@ -16,3 +16,5 @@ The following filters are available for plugin/theme customization:
 - pagestocategories_deactivation
 - pagestocategories_uninstall
 - pagestocategories_template
+- pagestocategories_get_link_terms
+- pagestocategories_the_posts_pagination_args
