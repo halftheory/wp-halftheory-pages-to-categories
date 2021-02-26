@@ -186,8 +186,8 @@ final class Pages_To_Categories extends Halftheory_Helper_Plugin {
 	public function get_terms($terms = array(), $taxonomy = array(), $query_vars, $term_query) {
 		if (empty(self::$registered_taxonomies)) {
 			return $terms;
-		}
-		if (!$this->is_front_end() && !headers_sent()) {
+		}		
+		if (!$this->is_front_end() && wp_doing_ajax()) {
 			return $terms;
 		}
 		if (count($terms) < 2) {
