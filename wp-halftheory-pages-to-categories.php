@@ -669,6 +669,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
                 return;
             }
             $arr = array_merge( $this->get_options_post_array(), $this->get_options_posts($post->ID) );
+            $style_toggle = ! empty($arr['active']) ? '' : ' style="display: none;"';
             ?>
             <label class="screen-reader-text" for="<?php echo esc_attr($field['id']); ?>"><?php echo $field['title']; ?></label>
 
@@ -680,40 +681,54 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
             ?>
             </label></p>
 
-            <p><label for="<?php echo esc_attr($field['id']); ?>_include_children"><input type="checkbox" id="<?php echo esc_attr($field['id']); ?>_include_children" name="<?php echo esc_attr($field['id']); ?>_include_children" value="1"<?php checked($arr['include_children'], 1); ?> /> <?php esc_html_e('Include children?'); ?></label></p>
+            <script type="text/javascript">
+            (function($, undefined) {
+                $('input#<?php echo esc_attr($field['id']); ?>_active').on("change",function(e){
+                    if (this.checked === true) {
+                        $('div#<?php echo esc_attr($field['id']); ?>_toggle').slideDown('fast');
+                    }
+                    else {
+                        $('div#<?php echo esc_attr($field['id']); ?>_toggle').slideUp('fast');
+                    }
+                });
+            })(jQuery);
+            </script>
+            <div id="<?php echo esc_attr($field['id']); ?>_toggle"<?php echo $style_toggle; ?>>
+                <p><label for="<?php echo esc_attr($field['id']); ?>_include_children"><input type="checkbox" id="<?php echo esc_attr($field['id']); ?>_include_children" name="<?php echo esc_attr($field['id']); ?>_include_children" value="1"<?php checked($arr['include_children'], 1); ?> /> <?php esc_html_e('Include children?'); ?></label></p>
 
-            <p><label for="<?php echo esc_attr($field['id']); ?>_order"><span style="min-width: 10em; display: inline-block;"><?php esc_html_e('Order by'); ?></span> <select name="<?php echo esc_attr($field['id']); ?>_order" id="<?php echo esc_attr($field['id']); ?>_order" style="min-width: 10em; width: auto;">
-            <?php
-            $select_arr = array('menu_order' => __('Page Order'), 'post_title' => __('Alphabetical'));
-            foreach ( $select_arr as $key => $value ) {
-                echo '<option value="' . esc_attr($key) . '"' . selected($arr['order'], $key, false) . '>' . esc_html($value) . '</option>' . "\n";
-            }
-            ?>
-            </select></label></p>
+                <p><label for="<?php echo esc_attr($field['id']); ?>_order"><span style="min-width: 10em; display: inline-block;"><?php esc_html_e('Order by'); ?></span> <select name="<?php echo esc_attr($field['id']); ?>_order" id="<?php echo esc_attr($field['id']); ?>_order" style="min-width: 10em; width: auto;">
+                <?php
+                $select_arr = array('menu_order' => __('Page Order'), 'post_title' => __('Alphabetical'));
+                foreach ( $select_arr as $key => $value ) {
+                    echo '<option value="' . esc_attr($key) . '"' . selected($arr['order'], $key, false) . '>' . esc_html($value) . '</option>' . "\n";
+                }
+                ?>
+                </select></label></p>
 
-            <p><label for="<?php echo esc_attr($field['id']); ?>_links"><span style="min-width: 10em; display: inline-block;"><?php esc_html_e('Rewrite Links'); ?></span> <select name="<?php echo esc_attr($field['id']); ?>_links" id="<?php echo esc_attr($field['id']); ?>_links" style="min-width: 10em; width: auto;">
-            <?php
-            $select_arr = array(
-                '' => __('none: ?taxonomy=parent&term=child'),
-                'query_var' => __('query_var: ?parent=child'),
-                'rewrite' => __('rewrite: taxonomy overwrites post (resave Permalinks)'),
-                'term_link' => __('term_link: post overwrites taxonomy'),
-            );
-            foreach ( $select_arr as $key => $value ) {
-                echo '<option value="' . esc_attr($key) . '"' . selected($arr['links'], $key, false) . '>' . esc_html($value) . '</option>' . "\n";
-            }
-            ?>
-            </select></label></p>
+                <p><label for="<?php echo esc_attr($field['id']); ?>_links"><span style="min-width: 10em; display: inline-block;"><?php esc_html_e('Rewrite Links'); ?></span> <select name="<?php echo esc_attr($field['id']); ?>_links" id="<?php echo esc_attr($field['id']); ?>_links" style="min-width: 10em; width: auto;">
+                <?php
+                $select_arr = array(
+                    '' => __('none: ?taxonomy=parent&term=child'),
+                    'query_var' => __('query_var: ?parent=child'),
+                    'rewrite' => __('rewrite: taxonomy overwrites post (resave Permalinks)'),
+                    'term_link' => __('term_link: post overwrites taxonomy'),
+                );
+                foreach ( $select_arr as $key => $value ) {
+                    echo '<option value="' . esc_attr($key) . '"' . selected($arr['links'], $key, false) . '>' . esc_html($value) . '</option>' . "\n";
+                }
+                ?>
+                </select></label></p>
 
-            <p><label for="<?php echo esc_attr($field['id']); ?>_append_posts"><input type="checkbox" id="<?php echo esc_attr($field['id']); ?>_append_posts" name="<?php echo esc_attr($field['id']); ?>_append_posts" value="1"<?php checked($arr['append_posts'], 1); ?> /> <?php esc_html_e('Append taxonomy posts to page?'); ?></label></p>
+                <p><label for="<?php echo esc_attr($field['id']); ?>_append_posts"><input type="checkbox" id="<?php echo esc_attr($field['id']); ?>_append_posts" name="<?php echo esc_attr($field['id']); ?>_append_posts" value="1"<?php checked($arr['append_posts'], 1); ?> /> <?php esc_html_e('Append taxonomy posts to page?'); ?></label></p>
 
-            <p><label for="<?php echo esc_attr($field['id']); ?>_posts_pagination"><input type="checkbox" id="<?php echo esc_attr($field['id']); ?>_posts_pagination" name="<?php echo esc_attr($field['id']); ?>_posts_pagination" value="1"<?php checked($arr['posts_pagination'], 1); ?> /> <?php esc_html_e('Posts use pagination?'); ?></label></p>
+                <p><label for="<?php echo esc_attr($field['id']); ?>_posts_pagination"><input type="checkbox" id="<?php echo esc_attr($field['id']); ?>_posts_pagination" name="<?php echo esc_attr($field['id']); ?>_posts_pagination" value="1"<?php checked($arr['posts_pagination'], 1); ?> /> <?php esc_html_e('Posts use pagination?'); ?></label></p>
 
-            <p><label for="<?php echo esc_attr($field['id']); ?>_link_terms"><input type="checkbox" id="<?php echo esc_attr($field['id']); ?>_link_terms" name="<?php echo esc_attr($field['id']); ?>_link_terms" value="1"<?php checked($arr['link_terms'], 1); ?> /> <?php esc_html_e('Add links to terms in post content?'); ?></label></p>
+                <p><label for="<?php echo esc_attr($field['id']); ?>_link_terms"><input type="checkbox" id="<?php echo esc_attr($field['id']); ?>_link_terms" name="<?php echo esc_attr($field['id']); ?>_link_terms" value="1"<?php checked($arr['link_terms'], 1); ?> /> <?php esc_html_e('Add links to terms in post content?'); ?></label></p>
 
-            <p><label for="<?php echo esc_attr($field['id']); ?>_singular_name"><span style="min-width: 10em; display: inline-block;"><?php esc_html_e('Singular name'); ?></span> <input type="text" name="<?php echo esc_attr($field['id']); ?>_singular_name" id="<?php echo esc_attr($field['id']); ?>_singular_name" style="min-width: 10em; width: auto;" value="<?php echo esc_attr($arr['singular_name']); ?>" /></label></p>
+                <p><label for="<?php echo esc_attr($field['id']); ?>_singular_name"><span style="min-width: 10em; display: inline-block;"><?php esc_html_e('Singular name'); ?></span> <input type="text" name="<?php echo esc_attr($field['id']); ?>_singular_name" id="<?php echo esc_attr($field['id']); ?>_singular_name" style="min-width: 10em; width: auto;" value="<?php echo esc_attr($arr['singular_name']); ?>" /></label></p>
 
-            <p><label for="<?php echo esc_attr($field['id']); ?>_plural_name"><span style="min-width: 10em; display: inline-block;"><?php esc_html_e('Plural name'); ?></span> <input type="text" name="<?php echo esc_attr($field['id']); ?>_plural_name" id="<?php echo esc_attr($field['id']); ?>_plural_name" style="min-width: 10em; width: auto;" value="<?php echo esc_attr($arr['plural_name']); ?>" /></label></p>
+                <p><label for="<?php echo esc_attr($field['id']); ?>_plural_name"><span style="min-width: 10em; display: inline-block;"><?php esc_html_e('Plural name'); ?></span> <input type="text" name="<?php echo esc_attr($field['id']); ?>_plural_name" id="<?php echo esc_attr($field['id']); ?>_plural_name" style="min-width: 10em; width: auto;" value="<?php echo esc_attr($arr['plural_name']); ?>" /></label></p>
+            </div>
             <?php
         }
 
