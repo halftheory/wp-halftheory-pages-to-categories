@@ -1247,8 +1247,8 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
                 if ( ! empty($this->registered_taxonomies[ $parent->post_name ]['posts_pagination']) ) {
                     $pagination = true;
                     if ( is_paged() ) {
-                        global $paged;
-                        $defaults['paged'] = $paged;
+                        global $paged, $page;
+                        $defaults['paged'] = ! empty($paged) ? $paged : $page;
                     }
                 }
             }

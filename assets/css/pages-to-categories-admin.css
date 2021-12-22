@@ -1,5 +1,5 @@
-table tr.pagestocategories-parent { background-color: #e5e5e5 !important; }
+table tr.pagestocategories-parent { background-color: #dbdbdd !important; }
 
-table tr.pagestocategories-parent td.title a.row-title:after { content: " (taxonomy)"; font-size: 90%; }
+table tr.pagestocategories-parent td.title a.row-title:after { content: " (taxonomy)"; font-size: 85%; }
 
-table tr.pagestocategories-child { background-color: #ececec !important; }
+table tr.pagestocategories-child { background-color: #e3e3e5 !important; }

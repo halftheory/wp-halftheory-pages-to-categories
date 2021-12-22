@@ -1,12 +1,12 @@
 $prefix: 'pagestocategories';
-$default-color: #f9f9f9;
+$default-color: #f0f0f1;
 
 table {
 	tr.#{$prefix}-parent {
 		background-color: darken($default-color, 8%) !important;
 		td.title a.row-title:after {
 			content: " (taxonomy)";
-			font-size: 90%;
+			font-size: 85%;
 		}
 	}
 	tr.#{$prefix}-child {
