@@ -20,11 +20,12 @@ pagestocategories_the_posts_pagination_args
 // Exit if accessed directly.
 defined('ABSPATH') || exit;
 
-if ( ! class_exists('Halftheory_Helper_Plugin', false) && is_readable(dirname(__FILE__) . '/class-halftheory-helper-plugin.php') ) {
-	include_once dirname(__FILE__) . '/class-halftheory-helper-plugin.php';
+if ( ! class_exists('Halftheory_Helper_Plugin', false) && is_readable(__DIR__ . '/class-halftheory-helper-plugin.php') ) {
+	include_once __DIR__ . '/class-halftheory-helper-plugin.php';
 }
 
 if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Halftheory_Helper_Plugin', false) ) :
+    #[AllowDynamicProperties]
 	final class Halftheory_Pages_To_Categories extends Halftheory_Helper_Plugin {
 
         protected static $instance;
@@ -56,7 +57,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
             add_filter('term_link', array( $this, 'term_link' ), 20, 3);
             add_filter('get_terms', array( $this, 'get_terms' ), 20, 4);
 
-            if ( $this->is_front_end() ) {
+            if ( $this->is_public() ) {
                 // public.
                 add_filter('wp_get_object_terms_args', array( $this, 'wp_get_object_terms_args' ), 20, 3);
                 // the_content - after shortcodes (priority 11).
@@ -86,7 +87,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
         }
 
         public function delete_postmeta_terms_uninstall() {
-            $post_types = get_post_types(array('public' => true, 'hierarchical' => true), 'names');
+            $post_types = get_post_types(array( 'public' => true, 'hierarchical' => true ), 'names');
             foreach ( $post_types as $key => $value ) {
                 $args = array(
                     'post_type' => $key,
@@ -200,7 +201,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
             if ( empty($this->registered_taxonomies) ) {
                 return $termlink;
             }
-            if ( ! $this->is_front_end() && ! headers_sent() ) {
+            if ( ! $this->is_public() && ! headers_sent() ) {
                 return $termlink;
             }
             if ( ! isset($this->registered_taxonomies[ $taxonomy ]) ) {
@@ -222,7 +223,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
             if ( empty($this->registered_taxonomies) ) {
                 return $terms;
             }
-            if ( ! $this->is_front_end() && wp_doing_ajax() ) {
+            if ( ! $this->is_public() && wp_doing_ajax() ) {
                 return $terms;
             }
             if ( count($terms) < 2 ) {
@@ -397,7 +398,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
         }
 
         public function term_description_rss( $value, $taxonomy ) {
-            $str = trim(strip_tags($value));
+            $str = trim(wp_strip_all_tags($value));
             if ( strpos($str, $this->plugin_description) === 0 ) {
                 return '';
             }
@@ -405,7 +406,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
         }
 
         public function term_description( $value, $term_id, $taxonomy, $context ) {
-            $str = trim(strip_tags($value));
+            $str = trim(wp_strip_all_tags($value));
             if ( strpos($str, $this->plugin_description) === 0 ) {
                 return '';
             }
@@ -420,7 +421,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
             global $title;
             ?>
             <div class="wrap">
-            <h2><?php echo $title; ?></h2>
+            <h2><?php echo esc_html($title); ?></h2>
 
             <?php
             if ( $plugin->save_menu_page(__FUNCTION__, 'save') ) {
@@ -443,16 +444,14 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
                     if ( ! empty($options) ) {
                         $options = $plugin->get_options_context('input', null, array(), $options);
                         if ( $plugin->update_option($plugin::$prefix, $options) ) {
-                            echo $updated;
+                            echo wp_kses_post($updated);
                         } else {
-                            echo $error;
+                            echo wp_kses_post($error);
                         }
+                    } elseif ( $plugin->delete_option($plugin::$prefix) ) {
+                        wp_kses_post($updated);
                     } else {
-                        if ( $plugin->delete_option($plugin::$prefix) ) {
-                            echo $updated;
-                        } else {
-                            echo $updated;
-                        }
+                        wp_kses_post($updated);
                     }
                 };
                 $save();
@@ -487,7 +486,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
             $options = $plugin->get_options_context('admin_form');
             ?>
 
-            <form id="<?php echo esc_attr($plugin::$prefix); ?>-admin-form" name="<?php echo esc_attr($plugin::$prefix); ?>-admin-form" method="post" action="<?php echo esc_attr($_SERVER['REQUEST_URI']); ?>">
+            <form id="<?php echo esc_attr($plugin::$prefix); ?>-admin-form" name="<?php echo esc_attr($plugin::$prefix); ?>-admin-form" method="post" action="<?php echo esc_attr(sanitize_url(wp_unslash($_SERVER['REQUEST_URI']))); ?>">
             <?php
             // Use nonce for verification.
             wp_nonce_field($plugin->plugin_basename, $plugin->plugin_name . '::' . __FUNCTION__);
@@ -632,7 +631,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
 
             $arr = array_merge( $this->get_options_post_array(), $this->get_options_posts($parent->ID) );
             ?>
-            <label class="screen-reader-text" for="<?php echo esc_attr($field['id']); ?>"><?php echo $field['title']; ?></label>
+            <label class="screen-reader-text" for="<?php echo esc_attr($field['id']); ?>"><?php echo esc_html($field['title']); ?></label>
             <input type="hidden" id="<?php echo esc_attr($field['id']); ?>_parent_id" name="<?php echo esc_attr($field['id']); ?>_parent_id" value="<?php echo esc_attr($parent->ID); ?>" />
 
             <p>
@@ -672,13 +671,12 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
             $arr = array_merge( $this->get_options_post_array(), $this->get_options_posts($post->ID) );
             $style_toggle = ! empty($arr['active']) ? '' : ' style="display: none;"';
             ?>
-            <label class="screen-reader-text" for="<?php echo esc_attr($field['id']); ?>"><?php echo $field['title']; ?></label>
+            <label class="screen-reader-text" for="<?php echo esc_attr($field['id']); ?>"><?php echo esc_html($field['title']); ?></label>
 
             <p><label for="<?php echo esc_attr($field['id']); ?>_active"><input type="checkbox" id="<?php echo esc_attr($field['id']); ?>_active" name="<?php echo esc_attr($field['id']); ?>_active" value="1"<?php checked($arr['active'], 1); ?> />
             <?php
             global $wp_post_types;
-            echo $wp_post_types[ $post->post_type ]->labels->singular_name;
-            esc_html_e(' is taxonomy?');
+            echo wp_sprintf('%s is taxonomy?', esc_html($wp_post_types[ $post->post_type ]->labels->singular_name));
             ?>
             </label></p>
 
@@ -699,7 +697,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
 
                 <p><label for="<?php echo esc_attr($field['id']); ?>_order"><span style="min-width: 10em; display: inline-block;"><?php esc_html_e('Order by'); ?></span> <select name="<?php echo esc_attr($field['id']); ?>_order" id="<?php echo esc_attr($field['id']); ?>_order" style="min-width: 10em; width: auto;">
                 <?php
-                $select_arr = array('menu_order' => __('Page Order'), 'post_title' => __('Alphabetical'));
+                $select_arr = array( 'menu_order' => __('Page Order'), 'post_title' => __('Alphabetical') );
                 foreach ( $select_arr as $key => $value ) {
                     echo '<option value="' . esc_attr($key) . '"' . selected($arr['order'], $key, false) . '>' . esc_html($value) . '</option>' . "\n";
                 }
@@ -911,7 +909,7 @@ if ( ! class_exists('Halftheory_Pages_To_Categories', false) && class_exists('Ha
                                 break;
                             } elseif ( $term->taxonomy !== $post->post_name ) {
                                 global $wpdb;
-                                $wpdb->query("UPDATE $wpdb->term_taxonomy SET taxonomy = '" . $post->post_name . "' WHERE taxonomy = '" . $term->taxonomy . "'");
+                                $wpdb->query( $wpdb->prepare("UPDATE $wpdb->term_taxonomy SET taxonomy = %s WHERE taxonomy = %s", $post->post_name, $term->taxonomy) );
                             }
                         }
                     }
